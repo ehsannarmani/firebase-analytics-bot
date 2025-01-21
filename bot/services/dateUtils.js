@@ -16,10 +16,14 @@ function getFormattedDate() {
     return `${year}/${month}/${day} ${hours}:${minutes}:${seconds}`;
 }
 
-function formatLifetimeUsersByCountry(data) {
-    return data
-        .map(item => `📍 <code>${item.country.replace("(not set)", "Unknown")}</code>: <code>${item.users}</code> users`)
+function formatLifetimeUsersByCountry(data, requestedCountries) {
+    let result = data
+    if (requestedCountries.length > 0) {
+        result = result.filter(item => requestedCountries.some(country=> item.country.toLowerCase() === country.toLowerCase()))
+    }
+    result = result.map(item => `📍 <code>${item.country.replace("(not set)", "Unknown")}</code>: <code>${item.users}</code> users`)
         .join('\n');
+    return result
 }
 
 function getMonthName(month) {
