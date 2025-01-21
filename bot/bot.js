@@ -10,8 +10,12 @@ const { setupCountriesCommand } = require('./commands/countries');
 const { authMiddleware } = require('./middleware/auth');
 const { startSchedulers } = require('./services/scheduler');
 const {setupStartCommand} = require("./commands/start");
+const {configureCommands} = require("./commands/configure");
 
 const bot = new Bot(process.env.BOT_TOKEN);
+
+
+configureCommands(bot)
 
 // Middleware
 bot.use(authMiddleware);
