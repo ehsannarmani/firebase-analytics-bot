@@ -32,7 +32,7 @@ npm start
 - `/stop`: Stop the live update by replying to the live update message.
 
 ## Schedules
-The bot automatically sends updates to the UPDATE_CHANNEL_ID at regular intervals:
+The bot automatically sends updates to the `UPDATE_CHANNEL_ID` at regular intervals:
 - `Daily Active Users`: Sends the previous day's active user count every 4 hours.
 - `Last 30 Minutes Active Users`: Sends the active user count for the last 30 minutes every 15 minutes.
 
