@@ -1,11 +1,11 @@
 {
-  "name": "firebase-api",
+  "name": "firebase-analytics-bot",
   "version": "1.0.0",
   "main": "bot/bot.js",
   "scripts": {
     "start": "node bot/bot.js"
   },
-  "author": "",
+  "author": "Ehsan Narmani",
   "license": "ISC",
   "description": "",
   "dependencies": {
