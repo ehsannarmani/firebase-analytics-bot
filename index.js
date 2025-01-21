@@ -1,22 +1,30 @@
 const {BetaAnalyticsDataClient} = require('@google-analytics/data');
 const {Bot} = require("grammy");
+const repl = require("repl");
 require('dotenv').config();
 
 const KEY_FILE_PATH = process.env.SERVICE_ACCOUNT_PATH;
 const PROPERTY_ID = process.env.PROPERTY_ID;
+const authorizedChats = process.env.AUTHORIZED_CHATS.split(",")
 
 const LAST_30_MIN_INTERVAL = 15 // minutes
 const DAILY_ACTIVE_USERS_INTERVAL = 4 * 60 // minutes
 
 const bot = new Bot(process.env.BOT_TOKEN)
+const analyticsDataClient = new BetaAnalyticsDataClient({
+    keyFilename: KEY_FILE_PATH,
+});
 
-const authorizedChats = process.env.AUTHORIZED_CHATS.split(",")
+const liveUpdates = new Set()
 
 bot.use((ctx, next) => {
     if (!authorizedChats.includes(ctx.chatId.toString())) {
         return ctx.reply("You are not authorized to use this bot ❌")
     }
     return next()
+})
+bot.catch(err=>{
+    console.log(err.message)
 })
 bot.command("start", async (ctx) => {
     await ctx.reply("🙌 Welcome to analytics bot\n\n/daily - Get daily active users report\n/min30 - Get last 30 minutes active users\n/users - Get total lifetime users\n/countries - Get total lifetime users by countries")
@@ -52,10 +60,53 @@ bot.command("min30", async (ctx) => {
     }
     await ctx.deleteMessages([loadingMessage.message_id])
 })
+bot.command("live", async (ctx) => {
+    const message = await ctx.reply("Starting live update for last 30 minutes active users...")
+    const update = async () => {
+        try {
+            const report = await getActiveUsersLast30Minutes()
+            await bot.api.editMessageText(
+                message.chat.id,
+                message.message_id,
+                `🛜 Live Update\n\n📍 Active users in last 30 minutes: <code>${report}</code>\n\nLast Update: ${getFormattedDate()}`,
+                {parse_mode: 'HTML'}
+            )
+        }catch (e){}
+    }
+    await update()
+    const intervalId = setInterval(update,5000)
+    liveUpdates.add({
+        messageId: message.message_id,
+        intervalId: intervalId
+    })
+})
+bot.command("stop", async (ctx)=>{
+    try {
+        if(ctx.message.reply_to_message){
+            const repliedMessageId = ctx.message.reply_to_message.message_id
+            const foundLiveUpdate = Array.from(liveUpdates).filter((value) => value.messageId == repliedMessageId)[0];
+            if(foundLiveUpdate){
+                clearInterval(foundLiveUpdate.intervalId)
+                let liveUpdateText = ctx.message.reply_to_message.text
+
+                liveUpdateText = liveUpdateText.split("Live Update")
+                const newText = `${liveUpdateText[0]} Live Update - Stopped ❌${liveUpdateText[1]}`
+                await bot.api.editMessageText(ctx.chatId,repliedMessageId,newText,{parse_mode: 'HTML'})
+                await ctx.reply("Replied live update stopped. ✅")
+                liveUpdates.delete(foundLiveUpdate)
+            }else{
+                await ctx.reply("❌ Live update is not found, maybe it's stopped or something.")
+            }
+        }else{
+            await ctx.reply("❌ You can reply this command on live update analytics to stop it.")
+        }
+    }catch (e){
+
+    }
+})
 
 bot.command("users", async (ctx) => {
     const loadingMessage = await ctx.reply("Getting total lifetime users...");
-
     try {
         const lifetimeActiveUsers = await getLifetimeActiveUsers();
         await ctx.reply(`👥 Total Lifetime Users: <code>${lifetimeActiveUsers}</code>`, {
@@ -125,12 +176,6 @@ setInterval(async function () {
 
 
 async function getLifetimeUsersByCountry() {
-    // Initialize the Analytics Data client
-    const analyticsDataClient = new BetaAnalyticsDataClient({
-        keyFilename: KEY_FILE_PATH,
-    });
-
-    // Define the metrics to retrieve (total lifetime users)
     const metrics = [
         {
             name: 'totalUsers',
@@ -160,12 +205,6 @@ async function getLifetimeUsersByCountry() {
 }
 
 async function getLifetimeActiveUsers() {
-    // Initialize the Analytics Data client
-    const analyticsDataClient = new BetaAnalyticsDataClient({
-        keyFilename: KEY_FILE_PATH,
-    });
-
-    // Define the metrics to retrieve (total lifetime users)
     const metrics = [
         {
             name: 'totalUsers',
@@ -188,12 +227,6 @@ async function getLifetimeActiveUsers() {
 }
 
 async function getDailyActiveUsers() {
-    // Initialize the Analytics Data client
-    const analyticsDataClient = new BetaAnalyticsDataClient({
-        keyFilename: KEY_FILE_PATH,
-    });
-
-    // Define the date range for the report
     const dateRange = {
         startDate: '7daysAgo', // Last 7 days
         endDate: 'today',
@@ -245,17 +278,10 @@ async function getDailyActiveUsers() {
         };
     });
 
-    console.log(result)
     return result
 }
 
 async function getActiveUsersLast30Minutes() {
-    // Initialize the Analytics Data client
-    const analyticsDataClient = new BetaAnalyticsDataClient({
-        keyFilename: KEY_FILE_PATH,
-    });
-
-    // Define the date range for the last 30 minutes
     const dateRange = {
         startDate: '30minutesAgo', // Last 30 minutes
         endDate: 'now', // Current time
