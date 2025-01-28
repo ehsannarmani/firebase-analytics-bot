@@ -6,7 +6,7 @@ let updateInterval = null
 function setupLiveCommand(bot) {
     bot.command("live", async (ctx) => {
         if(subscribedMessages.size === 0){
-            startUpdate(bot,5)
+            startUpdate(bot,60)
         }
         const message = await ctx.reply("Starting live update for last 30 minutes active users...");
         subscribedMessages.add({messageId: message.message_id, chatId: message.chat.id})

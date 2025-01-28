@@ -11,6 +11,8 @@ const { authMiddleware } = require('./middleware/auth');
 const { startSchedulers } = require('./services/scheduler');
 const {setupStartCommand} = require("./commands/start");
 const {configureCommands} = require("./commands/configure");
+const {setupNewUsersCommand} = require("./commands/newUsers");
+const {setupVersionsCommand} = require("./commands/versions");
 
 const bot = new Bot(process.env.BOT_TOKEN);
 
@@ -21,8 +23,10 @@ configureCommands(bot)
 bot.use(authMiddleware);
 
 // Commands
-setupStartCommand(bot)
+setupStartCommand(bot);
 setupDailyCommand(bot);
+setupNewUsersCommand(bot);
+setupVersionsCommand(bot);
 setupMin30Command(bot);
 setupLiveCommand(bot);
 setupStopCommand(bot);

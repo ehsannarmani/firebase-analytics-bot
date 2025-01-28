@@ -34,11 +34,24 @@ async function getLifetimeActiveUsers() {
     }
 }
 
-async function getDailyActiveUsers() {
+async function getDailyActiveUsersPerAppVersion() {
     const [response] = await analyticsDataClient.runReport({
         property: `properties/${process.env.PROPERTY_ID}`,
         dateRanges: [{ startDate: '7daysAgo', endDate: 'today' }],
         metrics: [{ name: 'activeUsers' }],
+        dimensions: [{ name: 'appVersion' }],
+    });
+
+    return response.rows.map(item => ({
+        version: item.dimensionValues[0].value,
+        users: item.metricValues[0].value
+    }));
+}
+async function getDailyActiveUsers(metrics = 'activeUsers') {
+    const [response] = await analyticsDataClient.runReport({
+        property: `properties/${process.env.PROPERTY_ID}`,
+        dateRanges: [{ startDate: '7daysAgo', endDate: 'today' }],
+        metrics: [{ name: metrics }],
         dimensions: [{ name: 'date' }],
     });
 
@@ -82,4 +95,5 @@ module.exports = {
     getLifetimeActiveUsers,
     getDailyActiveUsers,
     getActiveUsersLast30Minutes,
+    getDailyActiveUsersPerAppVersion
 };
