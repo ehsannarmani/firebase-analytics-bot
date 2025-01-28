@@ -25,6 +25,8 @@ npm start
 ## Commands
 
 - `/daily`: Get a report of active users over the last 7 days.
+- `/new_users`: Get a report of new users over the last 7 days.
+- `/versions`: Get a report of active users over the last 7 days grouped by app version.
 - `/min30`: Get a report of active users in the last 30 minutes.
 - `/users`: Get the total lifetime users count.
 - `/countries`: Get the total lifetime users by country.
