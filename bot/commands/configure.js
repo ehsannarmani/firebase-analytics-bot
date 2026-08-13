@@ -1,4 +1,4 @@
-const commands = [
+export const commands = [
     { command: 'start', description: 'Start the bot and view available commands.' },
     { command: 'daily', description: 'Get a report of active users over the last 7 days.' },
     { command: 'min30', description: 'Get the number of active users in the last 30 minutes.' },
@@ -10,12 +10,10 @@ const commands = [
     { command: 'stop', description: 'Stop the live update by replying to the live update message.' },
 ];
 
-async function configureCommands(bot) {
+export async function configureCommands(bot) {
     try {
-        await bot.api.setMyCommands(commands)
-    }catch (e) {
-        console.log(`Unable to configure commands: ${e}`)
+        await bot.api.setMyCommands(commands);
+    } catch (e) {
+        console.log(`Unable to configure commands: ${e}`);
     }
 }
-
-module.exports = {configureCommands, commands};

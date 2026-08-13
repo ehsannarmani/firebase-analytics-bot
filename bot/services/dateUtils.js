@@ -1,11 +1,11 @@
-function formatFirebaseDate(yyyymmdd) {
+export function formatFirebaseDate(yyyymmdd) {
     const year = yyyymmdd.slice(0, 4);
     const month = yyyymmdd.slice(4, 6);
     const day = yyyymmdd.slice(6, 8);
     return `${year}-${month}-${day}`;
 }
 
-function getFormattedDate() {
+export function getFormattedDate() {
     const date = new Date();
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -16,27 +16,20 @@ function getFormattedDate() {
     return `${year}/${month}/${day} ${hours}:${minutes}:${seconds}`;
 }
 
-function formatLifetimeUsersByCountry(data, requestedCountries) {
-    let result = data
-    if (requestedCountries.length > 0) {
-        result = result.filter(item => requestedCountries.some(country=> item.country.toLowerCase() === country.toLowerCase()))
+export function formatLifetimeUsersByCountry(data, requestedCountries = []) {
+    let result = data;
+    if (requestedCountries && requestedCountries.length > 0) {
+        result = result.filter(item => requestedCountries.some(country => item.country.toLowerCase() === country.toLowerCase()));
     }
     result = result.map(item => `📍 <code>${item.country.replace("(not set)", "Unknown")}</code>: <code>${item.users}</code> users`)
         .join('\n');
-    return result
+    return result;
 }
 
-function getMonthName(month) {
+export function getMonthName(month) {
     const monthNames = [
         "Jan", "Feb", "Mar", "Apr", "May", "Jun",
         "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
     ];
-    return monthNames[month - 1];
+    return monthNames[parseInt(month, 10) - 1];
 }
-
-module.exports = {
-    formatFirebaseDate,
-    getFormattedDate,
-    formatLifetimeUsersByCountry,
-    getMonthName,
-};

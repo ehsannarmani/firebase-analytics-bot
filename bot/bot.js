@@ -1,41 +1,54 @@
-const { Bot } = require("grammy");
-require('dotenv').config();
+import { Bot } from "grammy";
+import dotenv from "dotenv";
 
-const { setupDailyCommand } = require('./commands/daily');
-const { setupMin30Command } = require('./commands/min30');
-const { setupLiveCommand } = require('./commands/live');
-const { setupStopCommand } = require('./commands/stop');
-const { setupUsersCommand } = require('./commands/users');
-const { setupCountriesCommand } = require('./commands/countries');
-const { authMiddleware } = require('./middleware/auth');
-const { startSchedulers } = require('./services/scheduler');
-const {setupStartCommand} = require("./commands/start");
-const {configureCommands} = require("./commands/configure");
-const {setupNewUsersCommand} = require("./commands/newUsers");
-const {setupVersionsCommand} = require("./commands/versions");
+import { setupDailyCommand } from './commands/daily.js';
+import { setupMin30Command } from './commands/min30.js';
+import { setupLiveCommand } from './commands/live.js';
+import { setupStopCommand } from './commands/stop.js';
+import { setupUsersCommand } from './commands/users.js';
+import { setupCountriesCommand } from './commands/countries.js';
+import { authMiddleware } from './middleware/auth.js';
+import { startSchedulers } from './services/scheduler.js';
+import { setupStartCommand } from "./commands/start.js";
+import { configureCommands } from "./commands/configure.js";
+import { setupNewUsersCommand } from "./commands/newUsers.js";
+import { setupVersionsCommand } from "./commands/versions.js";
 
-const bot = new Bot(process.env.BOT_TOKEN);
+dotenv.config();
 
+export function createBot(token, env) {
+    const botToken = token || env?.BOT_TOKEN || (typeof process !== 'undefined' ? process.env?.BOT_TOKEN : undefined);
+    const bot = new Bot(botToken);
 
-configureCommands(bot)
+    bot.use(async (ctx, next) => {
+        ctx.env = env || (typeof process !== 'undefined' ? process.env : {});
+        await next();
+    });
 
-// Middleware
-bot.use(authMiddleware);
+    configureCommands(bot);
+    bot.use(authMiddleware);
 
-// Commands
-setupStartCommand(bot);
-setupDailyCommand(bot);
-setupNewUsersCommand(bot);
-setupVersionsCommand(bot);
-setupMin30Command(bot);
-setupLiveCommand(bot);
-setupStopCommand(bot);
-setupUsersCommand(bot);
-setupCountriesCommand(bot);
+    setupStartCommand(bot);
+    setupDailyCommand(bot);
+    setupNewUsersCommand(bot);
+    setupVersionsCommand(bot);
+    setupMin30Command(bot);
+    setupLiveCommand(bot);
+    setupStopCommand(bot);
+    setupUsersCommand(bot);
+    setupCountriesCommand(bot);
 
-// Start the bot
-bot.start();
-console.log("Bot is running...");
+    return bot;
+}
 
-// Start schedulers
-startSchedulers(bot);
+if (typeof process !== 'undefined' && process.argv && process.argv[1] && (process.argv[1].endsWith('bot.js') || process.argv[1].endsWith('bot\\bot.js'))) {
+    const botToken = process.env.BOT_TOKEN;
+    if (!botToken) {
+        console.error("BOT_TOKEN environment variable is required.");
+        process.exit(1);
+    }
+    const bot = createBot(botToken, process.env);
+    bot.start();
+    console.log("Bot is running in long-polling mode (Node.js)...");
+    startSchedulers(bot, process.env);
+}

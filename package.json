@@ -1,17 +1,23 @@
 {
   "name": "firebase-analytics-bot",
   "version": "1.0.0",
-  "main": "bot/bot.js",
+  "type": "module",
+  "main": "src/index.js",
   "scripts": {
-    "start": "node bot/bot.js"
+    "start": "node bot/bot.js",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "set-webhook": "node scripts/setWebhook.js",
+    "test-analytics": "node scripts/testAnalytics.js"
   },
   "author": "Ehsan Narmani",
   "license": "ISC",
-  "description": "",
+  "description": "Firebase Analytics Telegram Bot for Cloudflare Workers",
   "dependencies": {
-    "@google-analytics/data": "^4.12.0",
-    "dotenv": "^16.4.7",
-    "google-auth-library": "^9.15.0",
     "grammy": "^1.34.0"
+  },
+  "devDependencies": {
+    "dotenv": "^16.4.7",
+    "wrangler": "^3.107.3"
   }
 }
