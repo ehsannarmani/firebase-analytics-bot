@@ -8,7 +8,8 @@
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "set-webhook": "node scripts/setWebhook.js",
-    "test-analytics": "node scripts/testAnalytics.js"
+    "test-analytics": "node scripts/testAnalytics.js",
+    "test": "node scripts/testMultiAccounts.js"
   },
   "author": "Ehsan Narmani",
   "license": "ISC",

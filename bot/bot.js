@@ -16,6 +16,12 @@ import { setupNewUsersCommand } from "./commands/newUsers.js";
 import { setupVersionsCommand } from "./commands/versions.js";
 import { setupEngagementCommand } from "./commands/engagement.js";
 import { setupEventsCommand } from "./commands/events.js";
+import { setupProjectsCommand } from "./commands/projects.js";
+import { setupCompareCommand } from "./commands/compare.js";
+import { setupChartCallback } from "./commands/chartCallback.js";
+import { setupAdminPanelCommand } from "./commands/adminPanel.js";
+import { setupAdminConversation } from "./commands/adminConversation.js";
+import { setupMigrateCommand } from "./commands/migrate.js";
 
 dotenv.config();
 
@@ -31,10 +37,21 @@ export function createBot(token, env) {
     configureCommands(bot);
     bot.use(authMiddleware);
 
+    // Setup Admin Panel, Admin Conversations & Migration first
+    setupAdminPanelCommand(bot);
+    setupAdminConversation(bot);
+    setupMigrateCommand(bot);
+
+    // Setup Global Interactive Chart Callback
+    setupChartCallback(bot);
+
+    // Setup User Analytics Commands
     setupStartCommand(bot);
     setupHelpCommand(bot);
+    setupProjectsCommand(bot);
     setupDailyCommand(bot);
     setupNewUsersCommand(bot);
+    setupCompareCommand(bot);
     setupVersionsCommand(bot);
     setupMin30Command(bot);
     setupLiveCommand(bot);

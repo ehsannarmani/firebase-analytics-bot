@@ -1,7 +1,9 @@
 import { webhookCallback } from "grammy";
 import { createBot } from "../bot/bot.js";
 import { sendMin30Update, sendDailyUpdate } from "../bot/services/scheduler.js";
-import { getLifetimeActiveUsers, getActiveUsersLast30Minutes } from "../bot/services/analytics.js";
+import { getLifetimeActiveUsers, getActiveUsersLast30Minutes, getAccountsForExecution } from "../bot/services/analytics.js";
+import { FirebaseAccountRepository } from "../bot/db/accountRepository.js";
+import { SettingsRepository } from "../bot/db/settingsRepository.js";
 
 export default {
     async fetch(request, env, ctx) {
@@ -9,42 +11,51 @@ export default {
 
         // Comprehensive Health Check Endpoint: GET /health or GET /status or GET /
         if (request.method === "GET") {
+            let dbConnected = false;
+            let accountsCount = { total: 0, enabled: 0 };
+            let channelConfig = { channelId: null, source: 'none' };
+
+            try {
+                const repo = new FirebaseAccountRepository(env);
+                accountsCount = await repo.count();
+                const settingsRepo = new SettingsRepository(env);
+                channelConfig = await settingsRepo.getUpdateChannelId(env);
+                dbConnected = true;
+            } catch (e) {
+                console.error("Database check failed:", e);
+            }
+
             const checks = {
                 bot_token: Boolean(env?.BOT_TOKEN || process.env?.BOT_TOKEN),
-                property_id: Boolean(env?.PROPERTY_ID || process.env?.PROPERTY_ID),
-                update_channel_id: Boolean(env?.UPDATE_CHANNEL_ID || process.env?.UPDATE_CHANNEL_ID),
+                main_admin_configured: Boolean(env?.MAIN_ADMIN_CHAT_ID || process.env?.MAIN_ADMIN_CHAT_ID),
+                update_channel_id: channelConfig.channelId ? { configured: true, id: channelConfig.channelId, source: channelConfig.source } : { configured: false },
                 authorized_chats: Boolean(env?.AUTHORIZED_CHATS || process.env?.AUTHORIZED_CHATS),
                 secret_token: Boolean(env?.SECRET_TOKEN || env?.TELEGRAM_SECRET_TOKEN),
-                service_account: Boolean(
-                    env?.SERVICE_ACCOUNT_JSON ||
-                    (env?.SERVICE_ACCOUNT_CLIENT_EMAIL && env?.SERVICE_ACCOUNT_PRIVATE_KEY) ||
-                    env?.SERVICE_ACCOUNT_PATH
-                ),
+                database_connected: dbConnected,
+                accounts_count: accountsCount,
                 google_analytics_api: {
                     ok: false,
-                    lifetime_users: null,
-                    active_users_30min: null,
+                    accounts_tested: 0,
                     error: null,
                 }
             };
 
-            let isOk = checks.bot_token && checks.property_id && checks.service_account;
+            let isOk = checks.bot_token && checks.database_connected;
 
             if (isOk) {
                 try {
-                    const lifetimeUsers = await getLifetimeActiveUsers(env);
-                    checks.google_analytics_api.lifetime_users = lifetimeUsers;
+                    const accounts = await getAccountsForExecution(env);
+                    checks.google_analytics_api.accounts_tested = accounts.length;
 
-                    try {
-                        const min30Users = await getActiveUsersLast30Minutes(env);
-                        checks.google_analytics_api.active_users_30min = min30Users;
-                    } catch (err) {
-                        checks.google_analytics_api.active_users_30min = "N/A or empty";
+                    if (accounts.length > 0) {
+                        // Test first enabled account
+                        await getActiveUsersLast30Minutes(accounts[0]);
+                        checks.google_analytics_api.ok = true;
+                    } else {
+                        checks.google_analytics_api.ok = true;
+                        checks.google_analytics_api.note = "No Firebase accounts added yet. Use /admin to connect projects.";
                     }
-
-                    checks.google_analytics_api.ok = true;
                 } catch (err) {
-                    isOk = false;
                     checks.google_analytics_api.ok = false;
                     checks.google_analytics_api.error = err.message;
                 }
@@ -54,8 +65,8 @@ export default {
             return new Response(JSON.stringify({
                 status: isOk ? "ok" : "error",
                 message: isOk
-                    ? "Firebase Analytics Bot Worker is healthy and Google Analytics API is working! 🚀"
-                    : "Health check failed. Check environment variables or Service Account permissions.",
+                    ? "Firebase Analytics Bot Worker is healthy! 🚀"
+                    : "Health check warning. Check environment variables or database connection.",
                 checks,
                 timestamp: new Date().toISOString(),
             }, null, 2), {
@@ -89,7 +100,7 @@ export default {
             }
         }
 
-        return new Response("Method Not Allowed", { status: 450 });
+        return new Response("Method Not Allowed", { status: 405 });
     },
 
     async scheduled(event, env, ctx) {

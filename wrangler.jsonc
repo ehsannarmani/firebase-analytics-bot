@@ -6,6 +6,13 @@
   "compatibility_flags": [
     "nodejs_compat"
   ],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "analytics_bot_db",
+      "database_id": "4bc73909-fadc-406a-a3ca-a5f803114ad4"
+    }
+  ],
   "triggers": {
     "crons": [
       "*/15 * * * *",
