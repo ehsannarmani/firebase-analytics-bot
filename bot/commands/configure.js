@@ -1,6 +1,7 @@
 export const commands = [
     { command: 'start', description: 'Start the bot and view quick summary.' },
     { command: 'help', description: 'Detailed guide and usage instructions for all commands.' },
+    { command: 'dashboard', description: 'Executive multi-project overview & global KPIs.' },
     { command: 'projects', description: 'List or inspect Firebase projects and platforms.' },
     { command: 'compare', description: 'Compare metrics with previous period (e.g. /compare 14d).' },
     { command: 'daily', description: 'Daily active users report (e.g. /daily 30d, /daily zino).' },

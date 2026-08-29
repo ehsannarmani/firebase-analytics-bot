@@ -2,6 +2,9 @@ export function setupHelpCommand(bot) {
     bot.command("help", async (ctx) => {
         const helpText = `<b>🤖 Firebase Analytics Bot - Command Guide</b>
 
+<b>🎛 Executive Multi-Project Dashboard:</b>
+• /dashboard (or <code>/overview</code>) - Executive multi-project summary with aggregated global KPIs, per-app traffic breakdown, and comparative charts.
+
 <b>📊 Analytics Reports (Supports Optional Project & Duration Filters):</b>
 All analytics commands can be run for <b>all projects</b> or a <b>single project</b> with custom timeframes.
 

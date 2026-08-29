@@ -16,7 +16,7 @@ export function setupDailyCommand(bot) {
         let allAccounts = [];
         try {
             allAccounts = await repo.getAll();
-        } catch (e) {}
+        } catch (e) { }
 
         for (const token of rawTokens) {
             const dayMatch = token.match(/^(\d+)(d|days)?$/i);
@@ -118,7 +118,7 @@ export function setupDailyCommand(bot) {
         } finally {
             try {
                 await ctx.deleteMessages([loadingMessage.message_id]);
-            } catch (e) {}
+            } catch (e) { }
         }
     });
 }

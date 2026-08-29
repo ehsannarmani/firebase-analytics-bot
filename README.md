@@ -39,7 +39,8 @@ Built with **grammY** and optimized for **Cloudflare Workers** with **Cloudflare
 
 ## 🤖 Telegram Commands
 
-### Multi-Project Analytics Commands (Supports Optional `[project]` & `[days]` Filters)
+### Executive & Multi-Project Analytics Commands (Supports Optional `[project]` & `[days]` Filters)
+- `/dashboard` (or `/overview`) - Executive multi-project overview with consolidated global KPIs and app breakdown.
 - `/projects [project]` - List all configured Firebase projects or inspect platforms and live metrics.
 - `/compare [project] [days]` - Compare metrics against previous period (e.g. `/compare 14d` or `/compare zino 30d`).
 - `/daily [project] [days]` - Daily active users report with DoD growth % (e.g. `/daily 30d`, `/daily zino 14d`).

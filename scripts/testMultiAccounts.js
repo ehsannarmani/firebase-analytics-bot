@@ -623,6 +623,33 @@ async function runTests() {
         assert.equal(retrieved.results[0].account.serviceAccountJson, undefined, "Service account credentials must NEVER be stored in report context");
     });
 
+    // ----------------------------------------------------
+    // 9. EXECUTIVE DASHBOARD TESTS
+    // ----------------------------------------------------
+    console.log("\n🎛 9. Testing Executive Multi-Project Dashboard...");
+
+    await asyncTest("buildDashboardData formats consolidated overview correctly", async () => {
+        const { buildDashboardData } = await import("../bot/commands/dashboard.js");
+        const { buildChartConfig } = await import("../bot/services/chartDataBuilder.js");
+        const env = { MAIN_ADMIN_CHAT_ID: "1001" };
+
+        const res = await buildDashboardData(env);
+        assert.ok(res.text.includes("EXECUTIVE ANALYTICS DASHBOARD"));
+        assert.ok(res.text.includes("Combined Global Totals"));
+        assert.ok(res.keyboard);
+
+        // Dashboard chart config
+        const dashChart = buildChartConfig("dashboard", [
+            {
+                account: { id: "p1", name: "Alpha App" },
+                success: true,
+                data: { todayActive: 1000, todayNewUsers: 250, active30m: 80 }
+            }
+        ]);
+        assert.equal(dashChart.type, "bar");
+        assert.equal(dashChart.data.datasets.length, 3);
+    });
+
     console.log("\n==================================================");
     console.log(`🏁 TEST RESULTS: ${passedTests} PASSED, ${failedTests} FAILED`);
     console.log("==================================================");

@@ -18,6 +18,7 @@ import { setupEngagementCommand } from "./commands/engagement.js";
 import { setupEventsCommand } from "./commands/events.js";
 import { setupProjectsCommand } from "./commands/projects.js";
 import { setupCompareCommand } from "./commands/compare.js";
+import { setupDashboardCommand } from "./commands/dashboard.js";
 import { setupChartCallback } from "./commands/chartCallback.js";
 import { setupAdminPanelCommand } from "./commands/adminPanel.js";
 import { setupAdminConversation } from "./commands/adminConversation.js";
@@ -48,6 +49,7 @@ export function createBot(token, env) {
     // Setup User Analytics Commands
     setupStartCommand(bot);
     setupHelpCommand(bot);
+    setupDashboardCommand(bot);
     setupProjectsCommand(bot);
     setupDailyCommand(bot);
     setupNewUsersCommand(bot);

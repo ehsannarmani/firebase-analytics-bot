@@ -53,6 +53,8 @@ export function buildChartConfig(reportType, results, metadata = {}) {
             return buildEventsChart(successfulResults, metadata);
         case 'compare':
             return buildComparisonChart(successfulResults, metadata);
+        case 'dashboard':
+            return buildDashboardChart(successfulResults, metadata);
         default:
             return null;
     }
@@ -444,6 +446,47 @@ function buildComparisonChart(results, metadata) {
                     tension: 0.35,
                     borderWidth: 2.5,
                     pointRadius: 3,
+                }
+            ]
+        },
+        options,
+    };
+}
+
+/**
+ * 9. Executive Multi-Project Overview Dashboard Chart
+ */
+function buildDashboardChart(results, metadata) {
+    const labels = results.map(r => r.account.name);
+    const todayUsers = results.map(r => Number(r.data?.todayActive) || 0);
+    const newUsers = results.map(r => Number(r.data?.todayNewUsers) || 0);
+    const active30m = results.map(r => Number(r.data?.active30m) || 0);
+
+    const title = `🎛 Multi-Project Performance Overview`;
+    const options = getDarkThemeBase(title);
+
+    return {
+        type: 'bar',
+        data: {
+            labels,
+            datasets: [
+                {
+                    label: 'Today Active Users',
+                    data: todayUsers,
+                    backgroundColor: '#6366f1',
+                    borderRadius: 6,
+                },
+                {
+                    label: 'Today New Users',
+                    data: newUsers,
+                    backgroundColor: '#10b981',
+                    borderRadius: 6,
+                },
+                {
+                    label: 'Realtime (Last 30m)',
+                    data: active30m,
+                    backgroundColor: '#ec4899',
+                    borderRadius: 6,
                 }
             ]
         },
