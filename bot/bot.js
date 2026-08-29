@@ -10,9 +10,12 @@ import { setupCountriesCommand } from './commands/countries.js';
 import { authMiddleware } from './middleware/auth.js';
 import { startSchedulers } from './services/scheduler.js';
 import { setupStartCommand } from "./commands/start.js";
+import { setupHelpCommand } from "./commands/help.js";
 import { configureCommands } from "./commands/configure.js";
 import { setupNewUsersCommand } from "./commands/newUsers.js";
 import { setupVersionsCommand } from "./commands/versions.js";
+import { setupEngagementCommand } from "./commands/engagement.js";
+import { setupEventsCommand } from "./commands/events.js";
 
 dotenv.config();
 
@@ -29,6 +32,7 @@ export function createBot(token, env) {
     bot.use(authMiddleware);
 
     setupStartCommand(bot);
+    setupHelpCommand(bot);
     setupDailyCommand(bot);
     setupNewUsersCommand(bot);
     setupVersionsCommand(bot);
@@ -37,6 +41,8 @@ export function createBot(token, env) {
     setupStopCommand(bot);
     setupUsersCommand(bot);
     setupCountriesCommand(bot);
+    setupEngagementCommand(bot);
+    setupEventsCommand(bot);
 
     return bot;
 }

@@ -8,7 +8,7 @@ export function authMiddleware(ctx, next) {
     const authorizedChats = getAuthorizedChats(ctx);
     if (authorizedChats.length > 0 && ctx?.chat) {
         if (!authorizedChats.includes(ctx.chat.id.toString())) {
-            return ctx.reply("You are not authorized to use this bot ❌");
+            return ctx.reply(`You (${ctx.chat.id.toString()}) are not authorized to use this bot ❌`);
         }
     }
     return next();

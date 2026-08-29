@@ -255,3 +255,188 @@ export async function getActiveUsersLast30Minutes(env) {
         throw new Error('No data found for the last 30 minutes.');
     }
 }
+
+export async function getAverageEngagementTime(env) {
+    const data = await runReportApi('runReport', {
+        dateRanges: [{ startDate: '7daysAgo', endDate: 'today' }],
+        metrics: [
+            { name: 'averageSessionDuration' },
+            { name: 'engagementRate' },
+            { name: 'userEngagementDuration' },
+            { name: 'activeUsers' },
+        ],
+        dimensions: [{ name: 'date' }],
+    }, env);
+
+    if (!data.rows) return [];
+
+    const sorted = data.rows
+        .map(row => ({
+            date: row.dimensionValues[0].value,
+            avgSessionDuration: parseFloat(row.metricValues[0].value),
+            engagementRate: parseFloat(row.metricValues[1].value),
+            totalEngagementDuration: parseFloat(row.metricValues[2].value),
+            activeUsers: parseInt(row.metricValues[3].value, 10),
+        }))
+        .sort((a, b) => parseInt(a.date, 10) - parseInt(b.date, 10));
+
+    return sorted.map((row, index, array) => {
+        const date = formatFirebaseDate(row.date);
+        let durationGrow = null;
+        if (index > 0) {
+            const prev = array[index - 1].avgSessionDuration;
+            if (prev > 0) {
+                durationGrow = ((row.avgSessionDuration - prev) / prev) * 100;
+            }
+        }
+        return {
+            date,
+            avgSessionDuration: row.avgSessionDuration,
+            engagementRate: row.engagementRate,
+            totalEngagementDuration: row.totalEngagementDuration,
+            activeUsers: row.activeUsers,
+            grow: durationGrow !== null ? durationGrow.toFixed(2) : null,
+        };
+    });
+}
+
+export async function getAllEvents(env, dateRange = '7daysAgo') {
+    const data = await runReportApi('runReport', {
+        dateRanges: [{ startDate: dateRange, endDate: 'today' }],
+        metrics: [{ name: 'eventCount' }],
+        dimensions: [{ name: 'eventName' }],
+        orderBys: [{ metric: { metricName: 'eventCount' }, desc: true }],
+        limit: 50,
+    }, env);
+
+    if (!data.rows) return [];
+
+    const totalEvents = data.rows.reduce((sum, row) => sum + parseInt(row.metricValues[0].value, 10), 0);
+
+    return data.rows.map(row => ({
+        eventName: row.dimensionValues[0].value,
+        count: parseInt(row.metricValues[0].value, 10),
+        percentage: ((parseInt(row.metricValues[0].value, 10) / totalEvents) * 100).toFixed(1),
+    }));
+}
+
+export async function getEventParameterBreakdown(eventName, paramName, env, dateRange = '7daysAgo') {
+    const data = await runReportApi('runReport', {
+        dateRanges: [{ startDate: dateRange, endDate: 'today' }],
+        metrics: [{ name: 'eventCount' }],
+        dimensions: [
+            { name: 'eventName' },
+            { name: `customEvent:${paramName}` },
+        ],
+        dimensionFilter: {
+            filter: {
+                fieldName: 'eventName',
+                stringFilter: { value: eventName, matchType: 'EXACT' },
+            },
+        },
+        orderBys: [{ metric: { metricName: 'eventCount' }, desc: true }],
+        limit: 50,
+    }, env);
+
+    if (!data.rows) return { eventName, paramName, totalCount: 0, values: [] };
+
+    const totalCount = data.rows.reduce((sum, row) => sum + parseInt(row.metricValues[0].value, 10), 0);
+
+    const values = data.rows
+        .map(row => {
+            const paramValue = row.dimensionValues[1].value;
+            const count = parseInt(row.metricValues[0].value, 10);
+            return {
+                value: paramValue === '(not set)' ? '(not set)' : paramValue,
+                count,
+                percentage: ((count / totalCount) * 100).toFixed(1),
+            };
+        })
+        .filter(v => v.value !== '(not set)' || v.count > 0);
+
+    return { eventName, paramName, totalCount, values };
+}
+
+export async function getCustomDimensions(env) {
+    const creds = await getCredentials(env);
+    if (!creds.propertyId) {
+        throw new Error("PROPERTY_ID is missing from environment/credentials.");
+    }
+
+    const accessToken = await getAccessToken(creds);
+    const url = `https://analyticsadmin.googleapis.com/v1beta/properties/${creds.propertyId}/customDimensions`;
+
+    const res = await fetch(url, {
+        method: 'GET',
+        headers: {
+            'Authorization': `Bearer ${accessToken}`,
+        },
+    });
+
+    if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(`Admin API request failed (${res.status}): ${errText}`);
+    }
+
+    const data = await res.json();
+    if (!data.customDimensions) return [];
+
+    return data.customDimensions
+        .filter(d => d.scope === 'EVENT')
+        .map(d => ({
+            paramName: d.parameterName,
+            displayName: d.displayName,
+        }));
+}
+
+export async function getMultiParamBreakdown(eventName, primaryParam, secondaryParam, env, dateRange = '7daysAgo') {
+    const data = await runReportApi('runReport', {
+        dateRanges: [{ startDate: dateRange, endDate: 'today' }],
+        metrics: [{ name: 'eventCount' }],
+        dimensions: [
+            { name: `customEvent:${primaryParam}` },
+            { name: `customEvent:${secondaryParam}` },
+        ],
+        dimensionFilter: {
+            filter: {
+                fieldName: 'eventName',
+                stringFilter: { value: eventName, matchType: 'EXACT' },
+            },
+        },
+        orderBys: [{ metric: { metricName: 'eventCount' }, desc: true }],
+        limit: 250,
+    }, env);
+
+    if (!data.rows) return { eventName, primaryParam, secondaryParam, groups: [] };
+
+    const groupMap = new Map();
+
+    for (const row of data.rows) {
+        const primaryVal = row.dimensionValues[0].value;
+        const secondaryVal = row.dimensionValues[1].value;
+        const count = parseInt(row.metricValues[0].value, 10);
+
+        if (!groupMap.has(primaryVal)) {
+            groupMap.set(primaryVal, { key: primaryVal, totalCount: 0, items: [] });
+        }
+
+        const group = groupMap.get(primaryVal);
+        group.totalCount += count;
+        group.items.push({ value: secondaryVal, count });
+    }
+
+    const groups = Array.from(groupMap.values()).map(g => {
+        return {
+            key: g.key,
+            totalCount: g.totalCount,
+            items: g.items.map(item => ({
+                value: item.value,
+                count: item.count,
+                percentage: ((item.count / g.totalCount) * 100).toFixed(1),
+            })).sort((a, b) => b.count - a.count),
+        };
+    });
+
+    return { eventName, primaryParam, secondaryParam, groups };
+}
+
