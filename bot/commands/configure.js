@@ -1,21 +1,28 @@
-const commands = [
-    { command: 'start', description: 'Start the bot and view available commands.' },
-    { command: 'daily', description: 'Get a report of active users over the last 7 days.' },
-    { command: 'min30', description: 'Get the number of active users in the last 30 minutes.' },
-    { command: 'users', description: 'Get the total number of lifetime users.' },
-    { command: 'new_users', description: 'Get a report of new users over the last 7 days.' },
-    { command: 'countries', description: 'Get the total lifetime users grouped by country.' },
-    { command: 'versions', description: 'Get a report of active users over the last 7 days grouped by app version.' },
-    { command: 'live', description: 'Start live updates for active users in the last 30 minutes (updates every 5 seconds).' },
-    { command: 'stop', description: 'Stop the live update by replying to the live update message.' },
+export const commands = [
+    { command: 'start', description: 'Start the bot and view quick summary.' },
+    { command: 'help', description: 'Detailed guide and usage instructions for all commands.' },
+    { command: 'dashboard', description: 'Executive multi-project overview & global KPIs.' },
+    { command: 'projects', description: 'List or inspect Firebase projects and platforms.' },
+    { command: 'compare', description: 'Compare metrics with previous period (e.g. /compare 14d).' },
+    { command: 'daily', description: 'Daily active users report (e.g. /daily 30d, /daily zino).' },
+    { command: 'new_users', description: 'Daily new users report (e.g. /new_users 30d).' },
+    { command: 'min30', description: 'Active users in last 30 minutes (supports optional [project]).' },
+    { command: 'users', description: 'Total lifetime active users (supports optional [project]).' },
+    { command: 'countries', description: 'Lifetime users by country (supports [project] and filter).' },
+    { command: 'versions', description: 'Active users by app version (supports optional [project]).' },
+    { command: 'engagement', description: 'Average engagement time (supports optional [project]).' },
+    { command: 'events', description: 'Event analytics & drill-down (supports optional [project]).' },
+    { command: 'admin', description: 'Open Admin Control Panel (accounts, access, channel).' },
+    { command: 'live', description: 'Live active users updates (supports optional [project]).' },
+    { command: 'stop', description: 'Stop live updates by replying to a live message.' },
+    { command: 'migrate', description: 'Migrate legacy environment variables to database.' },
+    { command: 'cancel', description: 'Cancel current admin operation.' },
 ];
 
-async function configureCommands(bot) {
+export async function configureCommands(bot) {
     try {
-        await bot.api.setMyCommands(commands)
-    }catch (e) {
-        console.log(`Unable to configure commands: ${e}`)
+        await bot.api.setMyCommands(commands);
+    } catch (e) {
+        console.log(`Unable to configure commands: ${e}`);
     }
 }
-
-module.exports = {configureCommands, commands};

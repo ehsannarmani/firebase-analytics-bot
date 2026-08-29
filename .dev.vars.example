@@ -1,0 +1,7 @@
+# Cloudflare Workers environment variables (.dev.vars)
+BOT_TOKEN=your_telegram_bot_token_here
+MAIN_ADMIN_CHAT_ID=123456789
+SECRET_TOKEN=your_webhook_secret_token_here
+
+# Note: Firebase accounts, Authorized Chats, and Report Channel (UPDATE_CHANNEL_ID)
+# are all managed dynamically inside Telegram via /admin!

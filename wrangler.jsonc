@@ -1,0 +1,25 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "analytics-bot",
+  "main": "src/index.js",
+  "compatibility_date": "2024-09-23",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "analytics_bot_db",
+      "database_id": "4bc73909-fadc-406a-a3ca-a5f803114ad4"
+    }
+  ],
+  "triggers": {
+    "crons": [
+      "*/15 * * * *",
+      "0 */4 * * *"
+    ]
+  },
+  "observability": {
+    "enabled": true
+  }
+}
