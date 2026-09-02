@@ -3,6 +3,8 @@ import { getPeriodComparison, runMultiAccountExecution } from '../services/analy
 import { resolveTargetAccounts, normalizeSlug } from '../services/projectResolver.js';
 import { saveReportContext } from '../services/reportCache.js';
 import { FirebaseAccountRepository } from '../db/accountRepository.js';
+import { getFormattedDate } from '../services/dateUtils.js';
+import { buildRefreshCallback } from './refreshCallback.js';
 
 function formatDuration(seconds) {
     const mins = Math.floor(seconds / 60);
@@ -19,14 +21,59 @@ function formatDelta(deltaStr) {
     return `⚪️ <code>0%</code>`;
 }
 
-function padRight(str, len) {
-    const s = String(str || "");
-    return s + " ".repeat(Math.max(0, len - s.length));
-}
+/**
+ * Pure report generator for Period Comparison (shared between command and refresh callback).
+ */
+export async function generateCompareReport(env, { projectArg = "", days = 7 } = {}) {
+    const { accounts, isFiltered, matchedName, error } = await resolveTargetAccounts({ env }, projectArg);
+    if (error) {
+        return { text: error, keyboard: undefined, error };
+    }
 
-function padLeft(str, len) {
-    const s = String(str || "");
-    return " ".repeat(Math.max(0, len - s.length)) + s;
+    const results = await runMultiAccountExecution(accounts, async (account) => {
+        return await getPeriodComparison(account, days);
+    });
+
+    let finalMessage = `📊 <b>Period Comparison (${days} Days vs Previous ${days} Days)</b>\n` +
+                       `<i>Current Period vs Previous Period</i>\n`;
+    let successfulCount = 0;
+
+    for (const res of results) {
+        finalMessage += `\n━━━━━━━━━━━━━━━━━━\n`;
+        finalMessage += `🔥 <b>${res.account.name}</b>\n\n`;
+
+        if (res.success && res.data) {
+            successfulCount++;
+            const { current, previous, deltas } = res.data;
+
+            finalMessage += `• 👥 <b>Active Users:</b> <code>${current.activeUsers.toLocaleString()}</code> vs <code>${previous.activeUsers.toLocaleString()}</code> (${formatDelta(deltas.activeUsers)})\n` +
+                           `• ✨ <b>New Users:</b> <code>${current.newUsers.toLocaleString()}</code> vs <code>${previous.newUsers.toLocaleString()}</code> (${formatDelta(deltas.newUsers)})\n` +
+                           `• 🔄 <b>Sessions:</b> <code>${current.sessions.toLocaleString()}</code> vs <code>${previous.sessions.toLocaleString()}</code> (${formatDelta(deltas.sessions)})\n` +
+                           `• ⏱ <b>Avg Session:</b> <code>${formatDuration(current.avgDuration)}</code> vs <code>${formatDuration(previous.avgDuration)}</code> (${formatDelta(deltas.avgDuration)})\n`;
+        } else {
+            finalMessage += `❌ <i>Failed to retrieve comparison statistics</i>\n`;
+        }
+    }
+
+    finalMessage += `\n⏳ <i>Updated at ${getFormattedDate()}</i>`;
+
+    const keyboard = new InlineKeyboard();
+    let reportId = null;
+
+    if (successfulCount > 0) {
+        reportId = await saveReportContext(env, 'compare', results, {
+            isFiltered,
+            projectName: matchedName,
+            periodDays: days,
+            queryParams: { type: 'compare', projectArg, days }
+        });
+        keyboard.text("📈 View Comparison Chart", `chart:${reportId}`);
+    }
+
+    const refreshCb = buildRefreshCallback('compare', { projectArg, days }, reportId);
+    keyboard.text("🔄 Refresh", refreshCb);
+
+    return { text: finalMessage, keyboard, results, successfulCount };
 }
 
 export function setupCompareCommand(bot) {
@@ -64,55 +111,12 @@ export function setupCompareCommand(bot) {
             }
         }
 
-        const { accounts, isFiltered, matchedName, error } = await resolveTargetAccounts(ctx, projectArg);
-        if (error) {
-            return ctx.reply(error, { parse_mode: "HTML" });
-        }
-
-        const scopeLabel = isFiltered ? `<b>${matchedName}</b>` : "all connected projects";
+        const scopeLabel = projectArg ? `<b>${projectArg}</b>` : "all connected projects";
         const loadingMessage = await ctx.reply(`Analyzing ${days}-day period comparison for ${scopeLabel}...`, { parse_mode: "HTML" });
 
         try {
-            const results = await runMultiAccountExecution(accounts, async (account) => {
-                return await getPeriodComparison(account, days);
-            });
-
-            let finalMessage = `📊 <b>Period Comparison (${days}d vs Prev ${days}d)</b>\n\n`;
-            let successfulCount = 0;
-
-            for (const res of results) {
-                finalMessage += `🔥 <b>${res.account.name}</b>\n`;
-
-                if (res.success && res.data) {
-                    successfulCount++;
-                    const { current, previous, deltas } = res.data;
-
-                    // Clean comparison table
-                    let compTable = "";
-                    compTable += `${padRight("Metric", 12)} ${padLeft("Current", 9)} ${padLeft("Prev", 9)} ${padLeft("Delta", 8)}\n`;
-                    compTable += `──────────────────────────────────────────\n`;
-                    compTable += `${padRight("Active", 12)} ${padLeft(current.activeUsers.toLocaleString(), 9)} ${padLeft(previous.activeUsers.toLocaleString(), 9)} ${padLeft((deltas.activeUsers > 0 ? "+" : "") + deltas.activeUsers + "%", 8)}\n`;
-                    compTable += `${padRight("New Users", 12)} ${padLeft(current.newUsers.toLocaleString(), 9)} ${padLeft(previous.newUsers.toLocaleString(), 9)} ${padLeft((deltas.newUsers > 0 ? "+" : "") + deltas.newUsers + "%", 8)}\n`;
-                    compTable += `${padRight("Sessions", 12)} ${padLeft(current.sessions.toLocaleString(), 9)} ${padLeft(previous.sessions.toLocaleString(), 9)} ${padLeft((deltas.sessions > 0 ? "+" : "") + deltas.sessions + "%", 8)}\n`;
-
-                    finalMessage += `<pre><code>${compTable}</code></pre>\n` +
-                                   `• ⏱ <b>Avg Session:</b> <code>${formatDuration(current.avgDuration)}</code> vs <code>${formatDuration(previous.avgDuration)}</code> (${formatDelta(deltas.avgDuration)})\n\n`;
-                } else {
-                    finalMessage += `❌ <i>Failed to retrieve comparison statistics</i>\n\n`;
-                }
-            }
-
-            let replyMarkup = undefined;
-            if (successfulCount > 0) {
-                const reportId = await saveReportContext(ctx.env, 'compare', results, {
-                    isFiltered,
-                    projectName: matchedName,
-                    periodDays: days,
-                });
-                replyMarkup = new InlineKeyboard().text("📈 View Comparison Chart", `chart:${reportId}`);
-            }
-
-            await ctx.reply(finalMessage, { parse_mode: 'HTML', reply_markup: replyMarkup });
+            const report = await generateCompareReport(ctx.env, { projectArg, days });
+            await ctx.reply(report.text, { parse_mode: 'HTML', reply_markup: report.keyboard });
         } catch (error) {
             console.error('Error fetching period comparison:', error);
             await ctx.reply("❌ Failed to fetch period comparison. Please try again later.");

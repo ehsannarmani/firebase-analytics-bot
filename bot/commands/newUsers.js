@@ -3,6 +3,93 @@ import { getDailyActiveUsers, runMultiAccountExecution } from '../services/analy
 import { resolveTargetAccounts, normalizeSlug } from '../services/projectResolver.js';
 import { saveReportContext } from '../services/reportCache.js';
 import { FirebaseAccountRepository } from '../db/accountRepository.js';
+import { getFormattedDate } from '../services/dateUtils.js';
+import { buildRefreshCallback } from './refreshCallback.js';
+
+/**
+ * Pure report generator for Daily New Users (shared between command and refresh callback).
+ */
+export async function generateNewUsersReport(env, { projectArg = "", days = 7 } = {}) {
+    const { accounts, isFiltered, matchedName, error } = await resolveTargetAccounts({ env }, projectArg);
+    if (error) {
+        return { text: error, keyboard: undefined, error };
+    }
+
+    const results = await runMultiAccountExecution(accounts, async (account) => {
+        const list = await getDailyActiveUsers('newUsers', account, days);
+        return list.reverse();
+    });
+
+    let finalMessage = `👥 <b>Daily New Users (Last ${days} Days)</b>\n`;
+    let totalTodayNewUsers = 0;
+    let successfulCount = 0;
+
+    for (const res of results) {
+        finalMessage += `\n━━━━━━━━━━━━━━━━━━\n`;
+        finalMessage += `🔥 <b>${res.account.name}</b>\n\n`;
+
+        if (res.success && res.data && res.data.length > 0) {
+            successfulCount++;
+            const report = res.data;
+            totalTodayNewUsers += Number(report[0]?.users) || 0;
+
+            const displayList = report.slice(0, 10);
+            const msg = displayList
+                .map(dayReport => {
+                    let result = `📍 <code>${dayReport.date}</code> 👉 <code>${dayReport.users.toLocaleString()}</code> New users`;
+                    if (dayReport.grow) {
+                        if (dayReport.grow < 0) {
+                            result += ` 🔴`;
+                        } else {
+                            result += ` 🟢`;
+                        }
+                        result += ` <code>${dayReport.grow}%</code>`;
+                    }
+                    return result;
+                })
+                .join("\n");
+
+            finalMessage += msg + "\n";
+            if (report.length > 10) {
+                finalMessage += `<i>...and ${report.length - 10} more days in chart below</i>\n`;
+            }
+        } else if (res.success && (!res.data || res.data.length === 0)) {
+            finalMessage += `<i>No new user activity recorded in the last ${days} days.</i>\n`;
+        } else {
+            finalMessage += `❌ <i>Failed to retrieve statistics</i>\n`;
+        }
+    }
+
+    if (results.length > 1 && successfulCount > 0) {
+        finalMessage += `\n━━━━━━━━━━━━━━━━━━\n`;
+        finalMessage += `📈 <b>Combined Today New Users:</b> <code>${totalTodayNewUsers.toLocaleString()}</code>\n`;
+    }
+
+    finalMessage += `\n⏳ <i>Updated at ${getFormattedDate()}</i>`;
+
+    const keyboard = new InlineKeyboard();
+    let reportId = null;
+
+    if (successfulCount > 0) {
+        const chartResults = results.map(r => ({
+            account: r.account,
+            success: r.success,
+            data: (r.data || []).slice().reverse(),
+        }));
+        reportId = await saveReportContext(env, 'new_users', chartResults, {
+            isFiltered,
+            projectName: matchedName,
+            days,
+            queryParams: { type: 'new_users', projectArg, days }
+        });
+        keyboard.text("📈 View as Chart", `chart:${reportId}`);
+    }
+
+    const refreshCb = buildRefreshCallback('new_users', { projectArg, days }, reportId);
+    keyboard.text("🔄 Refresh", refreshCb);
+
+    return { text: finalMessage, keyboard, results, successfulCount };
+}
 
 export function setupNewUsersCommand(bot) {
     bot.command("new_users", async (ctx) => {
@@ -39,77 +126,12 @@ export function setupNewUsersCommand(bot) {
             }
         }
 
-        const { accounts, isFiltered, matchedName, error } = await resolveTargetAccounts(ctx, projectArg);
-        if (error) {
-            return ctx.reply(error, { parse_mode: "HTML" });
-        }
-
-        const scopeLabel = isFiltered ? `<b>${matchedName}</b>` : "all connected projects";
+        const scopeLabel = projectArg ? `<b>${projectArg}</b>` : "all connected projects";
         const loadingMessage = await ctx.reply(`Getting ${days}-day new users report for ${scopeLabel}...`, { parse_mode: "HTML" });
 
         try {
-            const results = await runMultiAccountExecution(accounts, async (account) => {
-                const list = await getDailyActiveUsers('newUsers', account, days);
-                return list.reverse();
-            });
-
-            let finalMessage = `👥 <b>Daily New Users (Last ${days} Days)</b>\n`;
-            let totalTodayNewUsers = 0;
-            let successfulCount = 0;
-
-            for (const res of results) {
-                finalMessage += `\n━━━━━━━━━━━━━━━━━━\n`;
-                finalMessage += `🔥 <b>${res.account.name}</b>\n\n`;
-
-                if (res.success && res.data && res.data.length > 0) {
-                    successfulCount++;
-                    const report = res.data;
-                    totalTodayNewUsers += Number(report[0]?.users) || 0;
-
-                    const displayList = report.slice(0, 10);
-                    const msg = displayList
-                        .map(dayReport => {
-                            let result = `📍 <code>${dayReport.date}</code> 👉 <code>${dayReport.users.toLocaleString()}</code> New users`;
-                            if (dayReport.grow) {
-                                if (dayReport.grow < 0) {
-                                    result += ` 🔴`;
-                                } else {
-                                    result += ` 🟢`;
-                                }
-                                result += ` <code>${dayReport.grow}%</code>`;
-                            }
-                            return result;
-                        })
-                        .join("\n");
-
-                    finalMessage += msg + "\n";
-                    if (report.length > 10) {
-                        finalMessage += `<i>...and ${report.length - 10} more days in chart below</i>\n`;
-                    }
-                } else if (res.success && (!res.data || res.data.length === 0)) {
-                    finalMessage += `<i>No new user activity recorded in the last ${days} days.</i>\n`;
-                } else {
-                    finalMessage += `❌ <i>Failed to retrieve statistics</i>\n`;
-                }
-            }
-
-            if (results.length > 1 && successfulCount > 0) {
-                finalMessage += `\n━━━━━━━━━━━━━━━━━━\n`;
-                finalMessage += `📈 <b>Combined Today New Users:</b> <code>${totalTodayNewUsers.toLocaleString()}</code>\n`;
-            }
-
-            let replyMarkup = undefined;
-            if (successfulCount > 0) {
-                const chartResults = results.map(r => ({
-                    account: r.account,
-                    success: r.success,
-                    data: (r.data || []).slice().reverse(),
-                }));
-                const reportId = await saveReportContext(ctx.env, 'new_users', chartResults, { isFiltered, projectName: matchedName, days });
-                replyMarkup = new InlineKeyboard().text("📈 View as Chart", `chart:${reportId}`);
-            }
-
-            await ctx.reply(finalMessage, { parse_mode: 'HTML', reply_markup: replyMarkup });
+            const report = await generateNewUsersReport(ctx.env, { projectArg, days });
+            await ctx.reply(report.text, { parse_mode: 'HTML', reply_markup: report.keyboard });
         } catch (error) {
             console.error('Error fetching new users report:', error);
             await ctx.reply("❌ Failed to fetch new users report. Please try again later.");

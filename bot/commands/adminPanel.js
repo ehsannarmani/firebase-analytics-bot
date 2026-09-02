@@ -24,7 +24,9 @@ export async function renderMainAdminPanel(ctx) {
 
     const settingsRepo = new SettingsRepository(ctx.env);
     const { channelId, source } = await settingsRepo.getUpdateChannelId(ctx.env);
-    const channelSummary = channelId ? `<code>${channelId}</code> (${source})` : `<i>Not configured</i>`;
+    const isMin30Enabled = await settingsRepo.isMin30UpdateEnabled(ctx.env);
+    const min30Badge = isMin30Enabled ? '🟢 30m ON' : '🔴 30m OFF';
+    const channelSummary = channelId ? `<code>${channelId}</code> (${source}, ${min30Badge})` : `<i>Not configured</i>`;
 
     const text = `⚙️ <b>Admin Control Panel</b>\n\n` +
         `📊 <b>Connected Firebase Projects:</b> <code>${total}</code> (${enabled} enabled)\n` +
@@ -185,16 +187,18 @@ export async function renderAuthorizedChatsList(ctx) {
 export async function renderChannelSettings(ctx) {
     const settingsRepo = new SettingsRepository(ctx.env);
     const { channelId, source } = await settingsRepo.getUpdateChannelId(ctx.env);
+    const isMin30Enabled = await settingsRepo.isMin30UpdateEnabled(ctx.env);
 
     let text = `📢 <b>Automated Report Channel Configuration</b>\n\n`;
 
     if (channelId) {
         const sourceLabel = source === 'database' ? '🟢 Configured in Database' : '🔵 Configured via Environment (UPDATE_CHANNEL_ID)';
+        const min30Status = isMin30Enabled ? '🟢 Enabled' : '🔴 Disabled';
         text += `🆔 <b>Active Channel ID:</b> <code>${channelId}</code>\n` +
             `🏷 <b>Source:</b> ${sourceLabel}\n\n` +
             `⏰ <b>Automated Reports Scheduled for this Channel:</b>\n` +
-            `• <b>15-Minute Report</b> (Active users in last 30 minutes)\n` +
-            `• <b>4-Hour Daily Report</b> (Daily active users & lifetime users with auto-pin)\n\n` +
+            `• <b>15-Minute Report (Last 30m active users):</b> ${min30Status}\n` +
+            `• <b>4-Hour Daily Report (Daily & lifetime users):</b> 🟢 Enabled\n\n` +
             `<i>Make sure the bot has been added as an <b>Administrator</b> in this channel with permission to Post Messages and Pin Messages.</i>`;
     } else {
         text += `⚠️ <b>No automated report channel configured.</b>\n\n` +
@@ -206,6 +210,8 @@ export async function renderChannelSettings(ctx) {
         .text("✏️ Set / Change Channel ID", "admin:set_channel");
 
     if (channelId) {
+        const toggleBtnText = isMin30Enabled ? "🔴 Disable 30m Updates" : "🟢 Enable 30m Updates";
+        keyboard.text(toggleBtnText, "admin:toggle_min30_channel").row();
         keyboard.text("🧪 Test Channel Message", "admin:test_channel").row();
         if (source === 'database') {
             keyboard.text("🗑 Clear Channel from DB", "admin:clear_channel").row();
@@ -228,6 +234,34 @@ export function setupAdminPanelCommand(bot) {
 
         const { text, keyboard } = await renderMainAdminPanel(ctx);
         await ctx.reply(text, { parse_mode: "HTML", reply_markup: keyboard });
+    });
+
+    // /min30_channel [on|off]
+    bot.command(["min30_channel", "min30channel"], async (ctx) => {
+        if (!isMainAdmin(ctx)) {
+            return ctx.reply("⛔️ Unauthorized: This command is restricted to the bot administrator.");
+        }
+
+        const settingsRepo = new SettingsRepository(ctx.env);
+        const arg = (ctx.match || "").trim().toLowerCase();
+
+        if (arg === "on" || arg === "enable" || arg === "true" || arg === "1") {
+            await settingsRepo.setMin30UpdateEnabled(true);
+            return ctx.reply("🟢 <b>30-minute active users updates to channel are now ENABLED.</b>", { parse_mode: "HTML" });
+        }
+
+        if (arg === "off" || arg === "disable" || arg === "false" || arg === "0") {
+            await settingsRepo.setMin30UpdateEnabled(false);
+            return ctx.reply("🔴 <b>30-minute active users updates to channel are now DISABLED.</b>", { parse_mode: "HTML" });
+        }
+
+        const isEnabled = await settingsRepo.isMin30UpdateEnabled(ctx.env);
+        const statusText = isEnabled ? "🟢 <b>Enabled</b>" : "🔴 <b>Disabled</b>";
+        return ctx.reply(
+            `📢 <b>30-Minute Channel Update Status:</b> ${statusText}\n\n` +
+            `Use <code>/min30_channel on</code> or <code>/min30_channel off</code> to toggle, or use <code>/admin</code>.`,
+            { parse_mode: "HTML" }
+        );
     });
 
     // Handle all admin:* callback queries
@@ -564,6 +598,21 @@ export function setupAdminPanelCommand(bot) {
             } catch (err) {
                 await ctx.reply(`❌ <b>Failed to post to channel <code>${channelId}</code>:</b>\n\n${err.message}\n\n<i>Ensure the bot is added as an Administrator in the channel.</i>`, { parse_mode: "HTML" });
             }
+            return;
+        }
+
+        // Toggle min30 channel updates: admin:toggle_min30_channel
+        if (data === "admin:toggle_min30_channel") {
+            const settingsRepo = new SettingsRepository(ctx.env);
+            const current = await settingsRepo.isMin30UpdateEnabled(ctx.env);
+            const newState = !current;
+            await settingsRepo.setMin30UpdateEnabled(newState);
+            await ctx.answerCallbackQuery({
+                text: newState ? "🟢 30m channel updates enabled!" : "🔴 30m channel updates disabled.",
+            });
+
+            const { text, keyboard } = await renderChannelSettings(ctx);
+            await ctx.editMessageText(text, { parse_mode: "HTML", reply_markup: keyboard });
             return;
         }
 

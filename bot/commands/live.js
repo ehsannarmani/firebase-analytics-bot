@@ -1,14 +1,19 @@
-import { getActiveUsersLast30Minutes, runMultiAccountExecution } from '../services/analytics.js';
+import { InlineKeyboard } from "grammy";
+import { getActiveUsersLast30Minutes, runMultiAccountExecution, getAccountsForExecution } from '../services/analytics.js';
 import { getFormattedDate } from '../services/dateUtils.js';
 import { resolveTargetAccounts } from '../services/projectResolver.js';
+import { buildRefreshCallback } from './refreshCallback.js';
 
 export const subscribedMessages = new Set();
 let updateInterval = null;
 
-async function generateLiveReportText(env, targetAccounts = null) {
-    const accounts = targetAccounts || await getAccountsForExecution(env);
-    if (!accounts || accounts.length === 0) {
-        return "📭 No enabled Firebase accounts found.";
+/**
+ * Pure report generator for Live Active Users (shared between command and refresh callback).
+ */
+export async function generateLiveReport(env, { projectArg = "" } = {}) {
+    const { accounts, isFiltered, matchedName, error } = await resolveTargetAccounts({ env }, projectArg);
+    if (error) {
+        return { text: error, keyboard: undefined, error };
     }
 
     const results = await runMultiAccountExecution(accounts, async (account) => {
@@ -36,27 +41,29 @@ async function generateLiveReportText(env, targetAccounts = null) {
         msg += `📈 <b>Total Active Users:</b> <code>${total}</code>\n`;
     }
 
-    msg += `\n⏳ Last Update: ${getFormattedDate()}`;
-    return msg;
+    msg += `\n⏳ <i>Updated at ${getFormattedDate()}</i>`;
+
+    const keyboard = new InlineKeyboard();
+    const refreshCb = buildRefreshCallback('live', { projectArg });
+    keyboard.text("🔄 Refresh", refreshCb);
+
+    return { text: msg, keyboard, results, successfulCount, accounts };
 }
 
 export function setupLiveCommand(bot) {
     bot.command("live", async (ctx) => {
-        const { accounts, isFiltered, matchedName, error } = await resolveTargetAccounts(ctx, ctx.match);
-        if (error) {
-            return ctx.reply(error, { parse_mode: "HTML" });
-        }
+        const projectArg = (ctx.match || "").trim();
 
         try {
-            const reportText = await generateLiveReportText(ctx.env, accounts);
-            const message = await ctx.reply(reportText, { parse_mode: 'HTML' });
+            const report = await generateLiveReport(ctx.env, { projectArg });
+            const message = await ctx.reply(report.text, { parse_mode: 'HTML', reply_markup: report.keyboard });
 
             // In Node.js environment, enable periodic interval updating
-            if (typeof process !== 'undefined' && process.release?.name === 'node') {
+            if (typeof process !== 'undefined' && process.release?.name === 'node' && report.accounts) {
                 if (subscribedMessages.size === 0) {
-                    startUpdate(bot, 60, ctx.env, accounts);
+                    startUpdate(bot, 60, ctx.env, report.accounts, projectArg);
                 }
-                subscribedMessages.add({ messageId: message.message_id, chatId: message.chat.id, accounts });
+                subscribedMessages.add({ messageId: message.message_id, chatId: message.chat.id, accounts: report.accounts, projectArg });
             }
         } catch (e) {
             console.error("Error in live command:", e);
@@ -65,17 +72,17 @@ export function setupLiveCommand(bot) {
     });
 }
 
-function startUpdate(bot, duration, env, accounts) {
+function startUpdate(bot, duration, env, accounts, projectArg) {
     if (updateInterval) clearInterval(updateInterval);
     updateInterval = setInterval(async function () {
         try {
             for (const item of subscribedMessages) {
-                const reportText = await generateLiveReportText(env, item.accounts);
+                const report = await generateLiveReport(env, { projectArg: item.projectArg });
                 await bot.api.editMessageText(
                     item.chatId,
                     item.messageId,
-                    reportText,
-                    { parse_mode: 'HTML' }
+                    report.text,
+                    { parse_mode: 'HTML', reply_markup: report.keyboard }
                 );
             }
         } catch (e) {

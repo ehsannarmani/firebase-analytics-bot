@@ -650,6 +650,216 @@ async function runTests() {
         assert.equal(dashChart.data.datasets.length, 3);
     });
 
+    // ----------------------------------------------------
+    // 10. MIN30 UPDATE CHANNEL TOGGLE TESTS
+    // ----------------------------------------------------
+    console.log("\n📢 10. Testing Min30 Channel Update Toggle & Scheduler...");
+
+    await asyncTest("SettingsRepository isMin30UpdateEnabled defaults to true and can be toggled", async () => {
+        const { SettingsRepository } = await import("../bot/db/settingsRepository.js");
+        const env = {};
+        const repo = new SettingsRepository(env);
+
+        // 1. Default should be true
+        const defaultVal = await repo.isMin30UpdateEnabled(env);
+        assert.equal(defaultVal, true, "Default for min30 channel updates should be true");
+
+        // 2. Disable via setMin30UpdateEnabled(false)
+        await repo.setMin30UpdateEnabled(false);
+        const disabledVal = await repo.isMin30UpdateEnabled(env);
+        assert.equal(disabledVal, false, "Should return false after disabling");
+
+        // 3. Re-enable via setMin30UpdateEnabled(true)
+        await repo.setMin30UpdateEnabled(true);
+        const enabledVal = await repo.isMin30UpdateEnabled(env);
+        assert.equal(enabledVal, true, "Should return true after enabling");
+
+        // 4. Environment variable fallback when not set in DB
+        await repo.delete('channel_min30_enabled');
+        const envDisabled = { ENABLE_MIN30_UPDATES: "false" };
+        const repoEnv = new SettingsRepository(envDisabled);
+        const envVal = await repoEnv.isMin30UpdateEnabled(envDisabled);
+        assert.equal(envVal, false, "Should respect ENABLE_MIN30_UPDATES=false fallback");
+    });
+
+    await asyncTest("sendMin30Update suppresses channel message when min30 updates are disabled", async () => {
+        const { sendMin30Update } = await import("../bot/services/scheduler.js");
+        const { SettingsRepository } = await import("../bot/db/settingsRepository.js");
+
+        let channelSent = false;
+        let sentKeyboard = null;
+        const fakeBot = {
+            api: {
+                sendMessage: async (channelId, text, opts) => {
+                    channelSent = true;
+                    sentKeyboard = opts?.reply_markup;
+                    return { message_id: 123 };
+                }
+            }
+        };
+
+        const testEnv = { UPDATE_CHANNEL_ID: "-100777" };
+        const settingsRepo = new SettingsRepository(testEnv);
+
+        // Disable min30
+        await settingsRepo.setMin30UpdateEnabled(false);
+        await sendMin30Update(fakeBot, testEnv);
+        assert.equal(channelSent, false, "sendMin30Update must NOT send message when min30 updates are disabled");
+
+        // Enable min30
+        await settingsRepo.setMin30UpdateEnabled(true);
+        await sendMin30Update(fakeBot, testEnv);
+        assert.equal(channelSent, true, "sendMin30Update MUST send message when min30 updates are enabled");
+        assert.ok(sentKeyboard, "Sent message must contain inline keyboard with refresh button");
+
+        // Verify refresh button exists in keyboard
+        const buttons = sentKeyboard.inline_keyboard.flat();
+        assert.ok(buttons.some(b => b.text.includes("Refresh") && b.callback_data === "ref:min30:"), "Should have ref:min30: button");
+    });
+
+    // ----------------------------------------------------
+    // 11. INLINE KEYBOARD REFRESH & REPORT GENERATORS TESTS
+    // ----------------------------------------------------
+    console.log("\n🔄 11. Testing Analytics Refresh Callback & Generators...");
+
+    await asyncTest("buildRefreshCallback formats compact callback data and handles length limits", async () => {
+        const { buildRefreshCallback } = await import("../bot/commands/refreshCallback.js");
+
+        // 1. Daily
+        const dailyCb = buildRefreshCallback("daily", { days: 14, projectArg: "zino" });
+        assert.equal(dailyCb, "ref:daily:14:zino");
+
+        // 2. New Users
+        const newCb = buildRefreshCallback("new_users", { days: 30, projectArg: "" });
+        assert.equal(newCb, "ref:new:30:");
+
+        // 3. Min30
+        const min30Cb = buildRefreshCallback("min30", { projectArg: "prod" });
+        assert.equal(min30Cb, "ref:min30:prod");
+
+        // 4. Countries
+        const cntryCb = buildRefreshCallback("countries", { projectArg: "prod", requestedCountries: ["US", "DE"] });
+        assert.equal(cntryCb, "ref:cntry:prod:US,DE");
+
+        // 5. Events - multi param
+        const evMpCb = buildRefreshCallback("events", { projectArg: "p", commandArgs: ["e", "p1", "p2"] });
+        assert.equal(evMpCb, "ref:ev:mp:p:e:p1:p2");
+
+        // 6. Extreme length safety limit (falls back to reportId if > 60 bytes)
+        const longArgs = ["extremely_long_event_name_that_exceeds_allowed_size_limit", "param1_extra_long", "param2_extra_long"];
+        const fallbackCb = buildRefreshCallback("events", { projectArg: "my_long_project_name", commandArgs: longArgs }, "r_12345");
+        assert.equal(fallbackCb, "ref:q:r_12345", "Must fall back to ref:q:reportId when callback exceeds 60 bytes");
+    });
+
+    await asyncTest("Analytics report generators include 🔄 Refresh button and updated timestamp", async () => {
+        const { generateDailyReport } = await import("../bot/commands/daily.js");
+        const { generateMin30Report } = await import("../bot/commands/min30.js");
+        const { generateUsersReport } = await import("../bot/commands/users.js");
+        const { generateEngagementReport } = await import("../bot/commands/engagement.js");
+        const { generateLiveReport } = await import("../bot/commands/live.js");
+
+        const env = { MAIN_ADMIN_CHAT_ID: "1001" };
+
+        // 1. Daily report
+        const dailyRes = await generateDailyReport(env, { projectArg: "", days: 7 });
+        assert.ok(dailyRes.text.includes("Daily Active Users"));
+        assert.ok(dailyRes.text.includes("Updated at"));
+        assert.ok(dailyRes.keyboard);
+        const dailyBtns = dailyRes.keyboard.inline_keyboard.flat();
+        assert.ok(dailyBtns.some(b => b.text.includes("Refresh") && b.callback_data.startsWith("ref:daily:")));
+
+        // 2. Min30 report
+        const min30Res = await generateMin30Report(env, { projectArg: "" });
+        assert.ok(min30Res.text.includes("Active users in last 30 minutes"));
+        assert.ok(min30Res.text.includes("Updated at"));
+        const min30Btns = min30Res.keyboard.inline_keyboard.flat();
+        assert.ok(min30Btns.some(b => b.text.includes("Refresh") && b.callback_data === "ref:min30:"));
+
+        // 3. Users report
+        const usersRes = await generateUsersReport(env, { projectArg: "" });
+        assert.ok(usersRes.text.includes("Lifetime Active Users"));
+        assert.ok(usersRes.text.includes("Updated at"));
+        const usersBtns = usersRes.keyboard.inline_keyboard.flat();
+        assert.ok(usersBtns.some(b => b.text.includes("Refresh") && b.callback_data === "ref:users:"));
+
+        // 4. Engagement report
+        const engRes = await generateEngagementReport(env, { projectArg: "" });
+        assert.ok(engRes.text.includes("Avg Engagement Time"));
+        assert.ok(engRes.text.includes("Updated at"));
+        const engBtns = engRes.keyboard.inline_keyboard.flat();
+        assert.ok(engBtns.some(b => b.text.includes("Refresh") && b.callback_data === "ref:eng:"));
+
+        // 5. Live report
+        const liveRes = await generateLiveReport(env, { projectArg: "" });
+        assert.ok(liveRes.text.includes("Live Active Users Update"));
+        assert.ok(liveRes.text.includes("Updated at"));
+        const liveBtns = liveRes.keyboard.inline_keyboard.flat();
+        assert.ok(liveBtns.some(b => b.text.includes("Refresh") && b.callback_data === "ref:live:"));
+    });
+
+    await asyncTest("setupRefreshCallback routes callbacks and updates message for authorized chat", async () => {
+        const { Bot } = await import("grammy");
+        const { setupRefreshCallback } = await import("../bot/commands/refreshCallback.js");
+
+        const env = { MAIN_ADMIN_CHAT_ID: "1001" };
+        const bot = new Bot("123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11", {
+            botInfo: {
+                id: 123456,
+                is_bot: true,
+                first_name: "TestBot",
+                username: "test_bot",
+                can_join_groups: true,
+                can_read_all_group_messages: false,
+                supports_inline_queries: false,
+            }
+        });
+        bot.use(async (ctx, next) => {
+            ctx.env = env;
+            await next();
+        });
+        setupRefreshCallback(bot);
+
+        // Mock bot API calls via transformer to avoid real HTTP requests
+        bot.api.config.use((prev, method, payload, signal) => {
+            return { ok: true, result: true };
+        });
+
+        // Dispatch directly via bot callback runner
+        await bot.handleUpdate({
+            update_id: 1,
+            callback_query: {
+                id: "cb_1",
+                from: { id: 1001, is_bot: false, first_name: "Admin" },
+                chat_instance: "ci_1",
+                message: {
+                    message_id: 99,
+                    date: Math.floor(Date.now() / 1000),
+                    chat: { id: 1001, type: "private" },
+                    text: "Old Report"
+                },
+                data: "ref:daily:7:"
+            }
+        });
+
+        // Test unauthorized chat rejection
+        let unauthAlert = null;
+        const fakeCtxUnauth = {
+            env,
+            from: { id: 9999 },
+            chat: { id: 9999 },
+            callbackQuery: { data: "ref:daily:7:" },
+            answerCallbackQuery: async ({ text, show_alert }) => {
+                unauthAlert = text;
+            },
+            editMessageText: async () => {},
+        };
+
+        const { AuthorizedChatRepository } = await import("../bot/db/authorizedChatRepository.js");
+        const authRepo = new AuthorizedChatRepository(env);
+        const isAuth = await authRepo.isChatAuthorized(fakeCtxUnauth);
+        assert.equal(isAuth, false, "Unauthorized chat must not be authorized");
+    });
+
     console.log("\n==================================================");
     console.log(`🏁 TEST RESULTS: ${passedTests} PASSED, ${failedTests} FAILED`);
     console.log("==================================================");

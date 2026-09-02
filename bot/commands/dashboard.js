@@ -10,24 +10,8 @@ import { FirebaseAccountRepository } from '../db/accountRepository.js';
 import { getFormattedDate } from '../services/dateUtils.js';
 import { saveReportContext } from '../services/reportCache.js';
 
-function formatShortNum(num) {
-    if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
-    if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
-    return String(num);
-}
-
-function padRight(str, len) {
-    const s = String(str || "");
-    return s + " ".repeat(Math.max(0, len - s.length));
-}
-
-function padLeft(str, len) {
-    const s = String(str || "");
-    return " ".repeat(Math.max(0, len - s.length)) + s;
-}
-
 /**
- * Builds the executive dashboard report text and keyboard.
+ * Builds the executive dashboard report text and keyboard (optimized for mobile screens).
  */
 export async function buildDashboardData(env) {
     const repo = new FirebaseAccountRepository(env);
@@ -77,8 +61,6 @@ export async function buildDashboardData(env) {
     let total7Day = 0;
     let successfulCount = 0;
 
-    const tableRows = [];
-
     for (const res of results) {
         if (res.success && res.data) {
             successfulCount++;
@@ -87,42 +69,18 @@ export async function buildDashboardData(env) {
             totalTodayNew += res.data.todayNewUsers;
             totalLifetime += res.data.lifetimeUsers;
             total7Day += res.data.sevenDayTotal;
-
-            tableRows.push({
-                name: res.account.name.slice(0, 12),
-                m30: formatShortNum(res.data.active30m),
-                today: formatShortNum(res.data.todayActive),
-                newU: formatShortNum(res.data.todayNewUsers),
-                total: formatShortNum(res.data.lifetimeUsers),
-            });
         }
     }
 
-    // Build clean monospace code block table
-    let codeTable = "";
-    if (tableRows.length > 0) {
-        codeTable += `${padRight("Project", 13)} ${padLeft("30m", 5)} ${padLeft("Today", 6)} ${padLeft("New", 5)} ${padLeft("Total", 6)}\n`;
-        codeTable += `─────────────────────────────────────\n`;
-        tableRows.forEach(r => {
-            codeTable += `${padRight(r.name, 13)} ${padLeft(r.m30, 5)} ${padLeft(r.today, 6)} ${padLeft(r.newU, 5)} ${padLeft(r.total, 6)}\n`;
-        });
-    }
-
     let text = `🎛 <b>EXECUTIVE ANALYTICS DASHBOARD</b>\n` +
-               `<i>Live overview across ${accounts.length} project${accounts.length > 1 ? 's' : ''}</i>\n\n` +
+               `<i>Live Consolidated Overview across ${accounts.length} Connected Project${accounts.length > 1 ? 's' : ''}</i>\n\n` +
                `<b>📊 Combined Global Totals:</b>\n` +
-               `• ⚡️ <b>Realtime (Last 30m):</b> <code>${total30m.toLocaleString()}</code>\n` +
+               `• ⚡️ <b>Realtime (Last 30m):</b> <code>${total30m.toLocaleString()}</code> active users\n` +
                `• 👥 <b>Today Active Users:</b> <code>${totalTodayActive.toLocaleString()}</code>\n` +
                `• ✨ <b>Today New Users:</b> <code>${totalTodayNew.toLocaleString()}</code>\n` +
-               `• 🙌 <b>Total Lifetime Users:</b> <code>${totalLifetime.toLocaleString()}</code>\n\n`;
-
-    if (codeTable) {
-        text += `<b>📋 Project Summary Table:</b>\n` +
-                `<pre><code>${codeTable}</code></pre>\n`;
-    }
-
-    text += `━━━━━━━━━━━━━━━━━━\n` +
-            `<b>📱 Projects Detail:</b>\n\n`;
+               `• 🙌 <b>Total Lifetime Users:</b> <code>${totalLifetime.toLocaleString()}</code>\n\n` +
+               `━━━━━━━━━━━━━━━━━━\n` +
+               `<b>📱 Projects Breakdown:</b>\n\n`;
 
     for (const res of results) {
         text += `🔥 <b>${res.account.name}</b>\n`;
