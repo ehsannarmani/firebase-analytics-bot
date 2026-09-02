@@ -20,6 +20,7 @@ import { setupProjectsCommand } from "./commands/projects.js";
 import { setupCompareCommand } from "./commands/compare.js";
 import { setupDashboardCommand } from "./commands/dashboard.js";
 import { setupChartCallback } from "./commands/chartCallback.js";
+import { setupRefreshCallback } from "./commands/refreshCallback.js";
 import { setupAdminPanelCommand } from "./commands/adminPanel.js";
 import { setupAdminConversation } from "./commands/adminConversation.js";
 import { setupMigrateCommand } from "./commands/migrate.js";
@@ -43,8 +44,9 @@ export function createBot(token, env) {
     setupAdminConversation(bot);
     setupMigrateCommand(bot);
 
-    // Setup Global Interactive Chart Callback
+    // Setup Global Interactive Chart & Refresh Callbacks
     setupChartCallback(bot);
+    setupRefreshCallback(bot);
 
     // Setup User Analytics Commands
     setupStartCommand(bot);

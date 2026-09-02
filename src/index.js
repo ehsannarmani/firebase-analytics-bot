@@ -29,6 +29,7 @@ export default {
                 bot_token: Boolean(env?.BOT_TOKEN || process.env?.BOT_TOKEN),
                 main_admin_configured: Boolean(env?.MAIN_ADMIN_CHAT_ID || process.env?.MAIN_ADMIN_CHAT_ID),
                 update_channel_id: channelConfig.channelId ? { configured: true, id: channelConfig.channelId, source: channelConfig.source } : { configured: false },
+                min30_channel_updates_enabled: dbConnected ? await (new SettingsRepository(env)).isMin30UpdateEnabled(env) : true,
                 authorized_chats: Boolean(env?.AUTHORIZED_CHATS || process.env?.AUTHORIZED_CHATS),
                 secret_token: Boolean(env?.SECRET_TOKEN || env?.TELEGRAM_SECRET_TOKEN),
                 database_connected: dbConnected,

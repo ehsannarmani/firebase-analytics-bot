@@ -22,6 +22,19 @@ export async function sendMin30Update(bot, env) {
         return;
     }
 
+    const isMin30Enabled = await settingsRepo.isMin30UpdateEnabled(env);
+    if (!isMin30Enabled) {
+        console.log("30-minute active users channel update is disabled by settings.");
+        // Still evaluate proactive traffic anomalies if enabled
+        try {
+            const { checkTrafficAnomalies } = await import('./anomalyService.js');
+            await checkTrafficAnomalies(bot, env);
+        } catch (anomErr) {
+            console.error("Error in checkTrafficAnomalies:", anomErr.message);
+        }
+        return;
+    }
+
     try {
         const accounts = await getAccountsForExecution(env);
         if (!accounts || accounts.length === 0) {
@@ -56,11 +69,12 @@ export async function sendMin30Update(bot, env) {
 
         msg += `\n⏳ ${getFormattedDate()}`;
 
-        let replyMarkup = undefined;
+        const replyMarkup = new InlineKeyboard();
         if (successfulCount > 0) {
             const reportId = await saveReportContext(env, 'min30', results, { isFiltered: false });
-            replyMarkup = new InlineKeyboard().text("📈 View as Chart", `chart:${reportId}`);
+            replyMarkup.text("📈 View as Chart", `chart:${reportId}`);
         }
+        replyMarkup.text("🔄 Refresh", "ref:min30:");
 
         await bot.api.sendMessage(channelId, msg, { parse_mode: 'HTML', reply_markup: replyMarkup });
 
@@ -151,7 +165,7 @@ export async function sendDailyUpdate(bot, env) {
 
         msg += `\n⏳ ${getFormattedDate()}`;
 
-        let replyMarkup = undefined;
+        const replyMarkup = new InlineKeyboard();
         if (successfulCount > 0) {
             // Transform results to standard daily chart structure
             const chartData = results.map(r => ({
@@ -160,8 +174,9 @@ export async function sendDailyUpdate(bot, env) {
                 data: r.data?.dailyList || [],
             }));
             const reportId = await saveReportContext(env, 'daily', chartData, { isFiltered: false });
-            replyMarkup = new InlineKeyboard().text("📈 View as Chart", `chart:${reportId}`);
+            replyMarkup.text("📈 View as Chart", `chart:${reportId}`);
         }
+        replyMarkup.text("🔄 Refresh", "ref:daily:7:");
 
         const message = await bot.api.sendMessage(channelId, msg, { parse_mode: 'HTML', reply_markup: replyMarkup });
         try {

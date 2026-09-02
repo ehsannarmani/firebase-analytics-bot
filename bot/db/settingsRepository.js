@@ -83,4 +83,36 @@ export class SettingsRepository {
     async clearUpdateChannelId() {
         return await this.delete('update_channel_id');
     }
+
+    /**
+     * Resolves whether 30-minute updates to the update channel are enabled:
+     * 1. Dynamic setting in D1 bot_settings ('channel_min30_enabled')
+     * 2. Fallback to ENABLE_MIN30_UPDATES / MIN30_CHANNEL_ENABLED env variables
+     * 3. Defaults to true (enabled)
+     */
+    async isMin30UpdateEnabled(env = this.env) {
+        try {
+            const dbVal = await this.get('channel_min30_enabled');
+            if (dbVal !== null && dbVal !== undefined && dbVal.trim() !== '') {
+                const normalized = dbVal.trim().toLowerCase();
+                return normalized === '1' || normalized === 'true' || normalized === 'yes';
+            }
+        } catch (e) {
+            console.warn("Could not retrieve channel_min30_enabled from DB:", e.message);
+        }
+
+        const envVal = env?.ENABLE_MIN30_UPDATES || env?.MIN30_CHANNEL_ENABLED || env?.MIN30_UPDATES_ENABLED ||
+            (typeof process !== 'undefined' ? (process.env?.ENABLE_MIN30_UPDATES || process.env?.MIN30_CHANNEL_ENABLED || process.env?.MIN30_UPDATES_ENABLED) : undefined);
+        if (envVal !== undefined && envVal !== null && envVal.toString().trim() !== '') {
+            const str = envVal.toString().trim().toLowerCase();
+            return str === '1' || str === 'true' || str === 'yes';
+        }
+
+        // Default to enabled to preserve existing behavior
+        return true;
+    }
+
+    async setMin30UpdateEnabled(enabled) {
+        return await this.set('channel_min30_enabled', enabled ? '1' : '0');
+    }
 }

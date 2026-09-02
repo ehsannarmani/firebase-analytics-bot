@@ -1,9 +1,61 @@
 import { InlineKeyboard } from "grammy";
 import { getLifetimeUsersByCountry, runMultiAccountExecution } from '../services/analytics.js';
-import { formatLifetimeUsersByCountry } from '../services/dateUtils.js';
+import { formatLifetimeUsersByCountry, getFormattedDate } from '../services/dateUtils.js';
 import { resolveTargetAccounts, normalizeSlug } from '../services/projectResolver.js';
 import { saveReportContext } from '../services/reportCache.js';
 import { FirebaseAccountRepository } from '../db/accountRepository.js';
+import { buildRefreshCallback } from './refreshCallback.js';
+
+/**
+ * Pure report generator for Lifetime Users by Country (shared between command and refresh callback).
+ */
+export async function generateCountriesReport(env, { projectArg = "", requestedCountries = [] } = {}) {
+    const { accounts, isFiltered, matchedName, error } = await resolveTargetAccounts({ env }, projectArg);
+    if (error) {
+        return { text: error, keyboard: undefined, error };
+    }
+
+    const results = await runMultiAccountExecution(accounts, async (account) => {
+        return await getLifetimeUsersByCountry(account);
+    });
+
+    let finalMessage = `🌍 <b>Total Lifetime Users by Country</b>\n`;
+    let successfulCount = 0;
+
+    for (const res of results) {
+        finalMessage += `\n━━━━━━━━━━━━━━━━━━\n`;
+        finalMessage += `🔥 <b>${res.account.name}</b>\n\n`;
+
+        if (res.success && res.data && res.data.length > 0) {
+            successfulCount++;
+            const formatted = formatLifetimeUsersByCountry(res.data, requestedCountries);
+            finalMessage += (formatted || "<i>No matching countries found.</i>") + "\n";
+        } else if (res.success && (!res.data || res.data.length === 0)) {
+            finalMessage += `<i>No country data available.</i>\n`;
+        } else {
+            finalMessage += `❌ <i>Failed to retrieve statistics</i>\n`;
+        }
+    }
+
+    finalMessage += `\n⏳ <i>Updated at ${getFormattedDate()}</i>`;
+
+    const keyboard = new InlineKeyboard();
+    let reportId = null;
+
+    if (successfulCount > 0) {
+        reportId = await saveReportContext(env, 'countries', results, {
+            isFiltered,
+            projectName: matchedName,
+            queryParams: { type: 'countries', projectArg, requestedCountries }
+        });
+        keyboard.text("📈 View as Chart", `chart:${reportId}`);
+    }
+
+    const refreshCb = buildRefreshCallback('countries', { projectArg, requestedCountries }, reportId);
+    keyboard.text("🔄 Refresh", refreshCb);
+
+    return { text: finalMessage, keyboard, results, successfulCount };
+}
 
 export function setupCountriesCommand(bot) {
     bot.command("countries", async (ctx) => {
@@ -41,44 +93,12 @@ export function setupCountriesCommand(bot) {
             }
         }
 
-        const { accounts, isFiltered, matchedName, error } = await resolveTargetAccounts(ctx, projectArg);
-        if (error) {
-            return ctx.reply(error, { parse_mode: "HTML" });
-        }
-
-        const scopeLabel = isFiltered ? `<b>${matchedName}</b>` : "all connected projects";
+        const scopeLabel = projectArg ? `<b>${projectArg}</b>` : "all connected projects";
         const loadingMessage = await ctx.reply(`Getting total lifetime users by country for ${scopeLabel}...`, { parse_mode: "HTML" });
 
         try {
-            const results = await runMultiAccountExecution(accounts, async (account) => {
-                return await getLifetimeUsersByCountry(account);
-            });
-
-            let finalMessage = `🌍 <b>Total Lifetime Users by Country</b>\n`;
-            let successfulCount = 0;
-
-            for (const res of results) {
-                finalMessage += `\n━━━━━━━━━━━━━━━━━━\n`;
-                finalMessage += `🔥 <b>${res.account.name}</b>\n\n`;
-
-                if (res.success && res.data && res.data.length > 0) {
-                    successfulCount++;
-                    const formatted = formatLifetimeUsersByCountry(res.data, requestedCountries);
-                    finalMessage += (formatted || "<i>No matching countries found.</i>") + "\n";
-                } else if (res.success && (!res.data || res.data.length === 0)) {
-                    finalMessage += `<i>No country data available.</i>\n`;
-                } else {
-                    finalMessage += `❌ <i>Failed to retrieve statistics</i>\n`;
-                }
-            }
-
-            let replyMarkup = undefined;
-            if (successfulCount > 0) {
-                const reportId = await saveReportContext(ctx.env, 'countries', results, { isFiltered, projectName: matchedName });
-                replyMarkup = new InlineKeyboard().text("📈 View as Chart", `chart:${reportId}`);
-            }
-
-            await ctx.reply(finalMessage, { parse_mode: 'HTML', reply_markup: replyMarkup });
+            const report = await generateCountriesReport(ctx.env, { projectArg, requestedCountries });
+            await ctx.reply(report.text, { parse_mode: 'HTML', reply_markup: report.keyboard });
         } catch (error) {
             console.error('Error fetching lifetime users by country:', error);
             await ctx.reply("❌ Failed to fetch lifetime users by country. Please try again later.");
